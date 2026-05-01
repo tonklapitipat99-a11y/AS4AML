@@ -5,9 +5,9 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <dirent.h>
-#include <sys/stat.h> // mkdir
-#include <sys/sendfile.h> // sendfile
-#include <fcntl.h> // "open" flags
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <fcntl.h>
 
 #include <angelscript.h>
 
@@ -19,34 +19,21 @@
 #include <scriptmath/scriptmath.h>
 #include <scriptstdstring/scriptstdstring.h>
 
-MYMODCFG(net.rusjj.as4aml, AngelScript for AML, 0.1, RusJJ)
+MYMODCFG(net.rusjj.as4aml, AngelScript for AML, 0.2, Supap10)
 
 asIScriptEngine *engine;
-
-// =====================================================================
-// >>> ส่วนที่เพิ่มใหม่ที่ 1: สร้างฟังก์ชันสำหรับจัดการกราฟิก <<<
-// ฟังก์ชันนี้จะถูกเรียกใช้ผ่านสคริปต์ .as เพื่อแสดงผลหรือปรับค่าต่างๆ
-// =====================================================================
-void MyCustomGraphicsFeature() 
-{
-    // ตัวอย่าง: แจ้งเตือนลงใน Log ของเกมเมื่อฟีเจอร์นี้ถูกเรียกใช้
-    logger->Info("========== CUSTOM GRAPHICS FEATURE ACTIVATED! ==========");
-    
-    // (ในอนาคตคุณสามารถเอาโค้ดแก้ค่า OpenGL มาใส่ตรงนี้ได้เลย)
-}
-
-// ตัวอย่างระบบ Hook (ดักจับฟังก์ชันเกม) หากต้องการใช้ให้ลบ // ด้านหน้าออก
-/*
-DECL_HOOKv(RenderMyGraphics, void* self) {
-    RenderMyGraphics(self); // ให้ระบบเดิมทำงานก่อน
-    logger->Info("Drawing extra graphics here!");
-}
-*/
-// =====================================================================
-
 void AddAS4AMLFuncs();
-void MessageCallback(const asSMessageInfo *msg, void *param)
-{
+
+// =====================================================================
+// >>> ส่วนที่ 1: ฟังชั่นกราฟิกและลูกเล่นใหม่ๆ <<<
+// =====================================================================
+void SetGameVisualTest() {
+    logger->Info("--- [AS4AML] สั่งเปลี่ยนค่ากราฟิกสำเร็จ! ---");
+    // ตัวอย่าง: แจ้งเตือนบนหน้าจอว่า Mod ทำงานแล้ว (ถ้าเข้าเกมแล้วเห็น Log นี้แสดงว่าผ่าน)
+    aml->ShowText("AS4AML: Graphics Hooked!", 2000); 
+}
+
+void MessageCallback(const asSMessageInfo *msg, void *param) {
     if(msg->type == asMSGTYPE_WARNING)
         logger->Print(LogP_Warn, "%s (%d, %d) : %s", msg->section, msg->row, msg->col, msg->message);
     else if(msg->type == asMSGTYPE_INFORMATION) 
@@ -55,89 +42,56 @@ void MessageCallback(const asSMessageInfo *msg, void *param)
         logger->Error("%s (%d, %d) : %s", msg->section, msg->row, msg->col, msg->message);
 }
 
-void SimplePrint(std::string &msg)
-{
+void SimplePrint(std::string &msg) {
     asIScriptContext *ctx = asGetActiveContext();
     logger->Info("<%s>: %s", ctx->GetFunction(0)->GetModuleName(), msg.c_str());
 }
 
-inline bool EndsWithAS(const char* base)
-{
+inline bool EndsWithAS(const char* base) {
     static int blen;
     blen = strlen(base);
     return (blen >= 3) && (!strcmp(base + blen - 3, ".as"));
 }
 
-void LoadAS(const char* path)
-{
+void LoadAS(const char* path) {
     char buf[0xFF];
     DIR* dir = opendir(path);
-    if (dir != NULL)
-    {
-        struct dirent *diread; void* handle;
-        while ((diread = readdir(dir)) != NULL)
-        {
-            if(diread->d_name[0] == '.') continue; // Skip . and ..
-            if(!EndsWithAS(diread->d_name))
-            {
-                continue;
-            }
+    if (dir != NULL) {
+        struct dirent *diread;
+        while ((diread = readdir(dir)) != NULL) {
+            if(diread->d_name[0] == '.') continue;
+            if(!EndsWithAS(diread->d_name)) continue;
+
             int r = builder->StartNewModule(engine, diread->d_name);
-            if(r < 0)
-            {
-                logger->Error("Failed to start a script module!");
-                continue;
-            }
+            if(r < 0) { logger->Error("Failed to start module!"); continue; }
+            
             sprintf(buf, "%s/%s", path, diread->d_name);
             r = builder->AddSectionFromFile(buf);
-            if(r < 0)
-            {
-                logger->Error("Failed to load a script!");
-                continue;
-            }
+            if(r < 0) { logger->Error("Failed to load script!"); continue; }
             
             asIScriptFunction *func = builder->BuildAMLModule()->GetFunctionByDecl("void main()");
-            if(func)
-            {
+            if(func) {
                 asIScriptContext *ctx = engine->CreateContext();
                 ctx->Prepare(func);
                 r = ctx->Execute();
-                if( r == asEXECUTION_EXCEPTION )
-                {
-                    logger->Error("An exception occurred:\n%s", ctx->GetExceptionString());
-                }
+                if( r == asEXECUTION_EXCEPTION ) logger->Error("Exception: %s", ctx->GetExceptionString());
                 ctx->Release();
             }
-            
-            logger->Info("%s has been loaded! woo!", diread->d_name);
+            logger->Info("Loaded Script: %s", diread->d_name);
         }
         closedir(dir);
     }
-    else
-    {
-        logger->Error("Failed to load mods: DIR IS NOT OPEN");
-    }
 }
 
-ON_MOD_PRELOAD()
-{
-    logger->SetTag("AngelScript AML");
+ON_MOD_PRELOAD() {
+    logger->SetTag("AS4AML_Supap");
+    logger->Info("Starting AS4AML for %s", aml->GetCurrentGame());
     
-    logger->Info("Launching AngelScript for %s", aml->GetCurrentGame());
     engine = asCreateScriptEngine();
-    if(!engine)
-    {
-        logger->Error("Failed to start AngelScript engine!");
-        return;
-    }
-    logger->Info("AngelScript has been started!");
+    if(!engine) return;
+    
     engine->SetMessageCallback(asFUNCTION(MessageCallback), 0, asCALL_CDECL);
     
-    #ifdef AS4AML_NO_LINE_CUES
-    engine->SetEngineProperty(asEP_BUILD_WITHOUT_LINE_CUES, true);
-    #endif // AS4AML_NO_LINE_CUES
-    
-    // Add-ons
     RegisterStdString(engine);
     RegisterScriptDateTime(engine);
     RegisterScriptArray(engine, true);
@@ -146,69 +100,31 @@ ON_MOD_PRELOAD()
     RegisterExceptionRoutines(engine);
     RegisterScriptMath(engine);
     
-    // Some basic funcs
+    // ลงทะเบียนคำสั่งไว้ให้สคริปต์ใช้
     engine->RegisterGlobalFunction("void print(const string &in)", asFUNCTION(SimplePrint), asCALL_CDECL);
+    engine->RegisterGlobalFunction("void SetVisual()", asFUNCTION(SetGameVisualTest), asCALL_CDECL);
     
-    // =====================================================================
-    // >>> ส่วนที่เพิ่มใหม่ที่ 2: ทำให้ AngelScript รู้จักคำสั่งกราฟิกของคุณ <<<
-    // =====================================================================
-    engine->RegisterGlobalFunction("void MyCustomGraphicsFeature()", asFUNCTION(MyCustomGraphicsFeature), asCALL_CDECL);
-    
-    // ตัวอย่างการทำงานของ Hook (ลบ // ออกเมื่อต้องการใช้)
-    // HOOK(RenderMyGraphics, aml->GetSym(aml->GetLibHandle("libGTASA.so"), "_ZN12SomeGameClass16RenderMyGraphicsEv"));
-    // =====================================================================
-
     AddAS4AMLFuncs();
-    
-    // Register an interface
-    RegisterInterface("AngelScript", engine);
-    RegisterInterface("AS4AML", as4aml);
 }
 
-ON_ALL_MODS_LOAD()
-{
+ON_ALL_MODS_LOAD() {
     char buf[0xFF];
-    bool supportsExtDir = aml->HasModOfVersion("net.rusjj.aml", "1.0.1");
-    if(supportsExtDir)
-    {
-        //sprintf(buf, "%s/%s/%s", g_szInternalStoragePath, szInternalModsDir, g_szAppName);
-        //LoadAS(buf);
-    }
-    sprintf(buf, "/sdcard/Android/data/%s/angelscript", aml->GetCurrentGame());
-    logger->Info("Starting to load scripts...");
+    const char* gameId = aml->GetCurrentGame();
+
+    // ตรวจสอบทั้งโฟลเดอร์ปกติ และโฟลเดอร์ Unprotected ที่คุณใช้
+    logger->Info("Checking for scripts in Unprotected folder...");
+    sprintf(buf, "/storage/emulated/0/Android_Unprotected/data/%s/angelscript", gameId);
     mkdir(buf, 0777);
     LoadAS(buf);
-    
-    asUINT c = engine->GetModuleCount();
-    for(asUINT i = 0; i < c; ++i)
-    {
-        asIScriptModule* mdl = engine->GetModuleByIndex(i);
-        if(!mdl) continue;
-        
-        asIScriptFunction *func = mdl->GetFunctionByDecl("void OnAllScriptsLoaded()");
-        if(func)
-        {
-            asIScriptContext *ctx = engine->CreateContext();
-            ctx->Prepare(func);
-            int r = ctx->Execute();
-            if( r == asEXECUTION_EXCEPTION )
-            {
-                logger->Error("An exception occurred:\n%s", ctx->GetExceptionString());
-            }
-            ctx->Release();
-        }
-    }
+
+    // ตรวจสอบโฟลเดอร์ปกติ (เผื่อไว้)
+    sprintf(buf, "/sdcard/Android/data/%s/angelscript", gameId);
+    mkdir(buf, 0777);
+    LoadAS(buf);
 }
 
-ON_MOD_UNLOAD()
-{
-    engine->Release();
-}
-
-ON_GAME_CRASH()
-{
-    OnModUnload();
-}
+ON_MOD_UNLOAD() { if(engine) engine->Release(); }
+ON_GAME_CRASH() { OnModUnload(); }
 
 static AMLScriptBuilder builderLocal;
 AMLScriptBuilder* builder = &builderLocal;
