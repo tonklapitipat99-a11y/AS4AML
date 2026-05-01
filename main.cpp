@@ -28,9 +28,10 @@ void AddAS4AMLFuncs();
 // >>> ส่วนที่ 1: ฟังชั่นกราฟิกและลูกเล่นใหม่ๆ <<<
 // =====================================================================
 void SetGameVisualTest() {
-    logger->Info("--- [AS4AML] สั่งเปลี่ยนค่ากราฟิกสำเร็จ! ---");
-    // ตัวอย่าง: แจ้งเตือนบนหน้าจอว่า Mod ทำงานแล้ว (ถ้าเข้าเกมแล้วเห็น Log นี้แสดงว่าผ่าน)
-    aml->ShowText("AS4AML: Graphics Hooked!", 2000); 
+    // ให้มันพิมพ์ข้อความแจ้งเตือนลงใน Log แบบเด่นๆ
+    logger->Info("=============================================");
+    logger->Info("--- [AS4AML] สั่งเปลี่ยนค่ากราฟิกสำเร็จแล้ว! ---");
+    logger->Info("=============================================");
 }
 
 void MessageCallback(const asSMessageInfo *msg, void *param) {
@@ -83,7 +84,7 @@ void LoadAS(const char* path) {
     }
 }
 
-ON_MOD_PRELOAD() {
+extern "C" void OnModPreLoad() {
     logger->SetTag("AS4AML_Supap");
     logger->Info("Starting AS4AML for %s", aml->GetCurrentGame());
     
@@ -105,26 +106,31 @@ ON_MOD_PRELOAD() {
     engine->RegisterGlobalFunction("void SetVisual()", asFUNCTION(SetGameVisualTest), asCALL_CDECL);
     
     AddAS4AMLFuncs();
+    
+    // Register an interface
+    RegisterInterface("AngelScript", engine);
+    RegisterInterface("AS4AML", as4aml);
 }
 
-ON_ALL_MODS_LOAD() {
+extern "C" void OnAllModsLoaded() {
     char buf[0xFF];
     const char* gameId = aml->GetCurrentGame();
 
-    // ตรวจสอบทั้งโฟลเดอร์ปกติ และโฟลเดอร์ Unprotected ที่คุณใช้
+    // ตรวจสอบโฟลเดอร์ Unprotected ของคุณ
     logger->Info("Checking for scripts in Unprotected folder...");
     sprintf(buf, "/storage/emulated/0/Android_Unprotected/data/%s/angelscript", gameId);
     mkdir(buf, 0777);
     LoadAS(buf);
 
-    // ตรวจสอบโฟลเดอร์ปกติ (เผื่อไว้)
+    // ตรวจสอบโฟลเดอร์ปกติ
     sprintf(buf, "/sdcard/Android/data/%s/angelscript", gameId);
     mkdir(buf, 0777);
     LoadAS(buf);
 }
 
-ON_MOD_UNLOAD() { if(engine) engine->Release(); }
-ON_GAME_CRASH() { OnModUnload(); }
+extern "C" void OnModUnload() { 
+    if(engine) engine->Release(); 
+}
 
 static AMLScriptBuilder builderLocal;
 AMLScriptBuilder* builder = &builderLocal;
