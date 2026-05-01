@@ -23,6 +23,27 @@ MYMODCFG(net.rusjj.as4aml, AngelScript for AML, 0.1, RusJJ)
 
 asIScriptEngine *engine;
 
+// =====================================================================
+// >>> ส่วนที่เพิ่มใหม่ที่ 1: สร้างฟังก์ชันสำหรับจัดการกราฟิก <<<
+// ฟังก์ชันนี้จะถูกเรียกใช้ผ่านสคริปต์ .as เพื่อแสดงผลหรือปรับค่าต่างๆ
+// =====================================================================
+void MyCustomGraphicsFeature() 
+{
+    // ตัวอย่าง: แจ้งเตือนลงใน Log ของเกมเมื่อฟีเจอร์นี้ถูกเรียกใช้
+    logger->Info("========== CUSTOM GRAPHICS FEATURE ACTIVATED! ==========");
+    
+    // (ในอนาคตคุณสามารถเอาโค้ดแก้ค่า OpenGL มาใส่ตรงนี้ได้เลย)
+}
+
+// ตัวอย่างระบบ Hook (ดักจับฟังก์ชันเกม) หากต้องการใช้ให้ลบ // ด้านหน้าออก
+/*
+DECL_HOOKv(RenderMyGraphics, void* self) {
+    RenderMyGraphics(self); // ให้ระบบเดิมทำงานก่อน
+    logger->Info("Drawing extra graphics here!");
+}
+*/
+// =====================================================================
+
 void AddAS4AMLFuncs();
 void MessageCallback(const asSMessageInfo *msg, void *param)
 {
@@ -33,17 +54,20 @@ void MessageCallback(const asSMessageInfo *msg, void *param)
     else
         logger->Error("%s (%d, %d) : %s", msg->section, msg->row, msg->col, msg->message);
 }
+
 void SimplePrint(std::string &msg)
 {
     asIScriptContext *ctx = asGetActiveContext();
     logger->Info("<%s>: %s", ctx->GetFunction(0)->GetModuleName(), msg.c_str());
 }
+
 inline bool EndsWithAS(const char* base)
 {
     static int blen;
     blen = strlen(base);
     return (blen >= 3) && (!strcmp(base + blen - 3, ".as"));
 }
+
 void LoadAS(const char* path)
 {
     char buf[0xFF];
@@ -56,7 +80,6 @@ void LoadAS(const char* path)
             if(diread->d_name[0] == '.') continue; // Skip . and ..
             if(!EndsWithAS(diread->d_name))
             {
-                //logger->Error("File %s is not a script, atleast it is NOT AngelScript file!", diread->d_name);
                 continue;
             }
             int r = builder->StartNewModule(engine, diread->d_name);
@@ -95,6 +118,7 @@ void LoadAS(const char* path)
         logger->Error("Failed to load mods: DIR IS NOT OPEN");
     }
 }
+
 ON_MOD_PRELOAD()
 {
     logger->SetTag("AngelScript AML");
@@ -124,6 +148,16 @@ ON_MOD_PRELOAD()
     
     // Some basic funcs
     engine->RegisterGlobalFunction("void print(const string &in)", asFUNCTION(SimplePrint), asCALL_CDECL);
+    
+    // =====================================================================
+    // >>> ส่วนที่เพิ่มใหม่ที่ 2: ทำให้ AngelScript รู้จักคำสั่งกราฟิกของคุณ <<<
+    // =====================================================================
+    engine->RegisterGlobalFunction("void MyCustomGraphicsFeature()", asFUNCTION(MyCustomGraphicsFeature), asCALL_CDECL);
+    
+    // ตัวอย่างการทำงานของ Hook (ลบ // ออกเมื่อต้องการใช้)
+    // HOOK(RenderMyGraphics, aml->GetSym(aml->GetLibHandle("libGTASA.so"), "_ZN12SomeGameClass16RenderMyGraphicsEv"));
+    // =====================================================================
+
     AddAS4AMLFuncs();
     
     // Register an interface
@@ -133,7 +167,6 @@ ON_MOD_PRELOAD()
 
 ON_ALL_MODS_LOAD()
 {
-    // Described below.
     char buf[0xFF];
     bool supportsExtDir = aml->HasModOfVersion("net.rusjj.aml", "1.0.1");
     if(supportsExtDir)
